@@ -54,8 +54,14 @@ public class MorseDecoder {
 
         double[] sampleBuffer = new double[BIN_SIZE * inputFile.getNumChannels()];
         for (int binIndex = 0; binIndex < totalBinCount; binIndex++) {
-            // Get the right number of samples from the inputFile
-            // Sum all the samples together and store them in the returnBuffer
+            int framesToRead = inputFile.readFrames(sampleBuffer, BIN_SIZE);
+            returnBuffer[binIndex] = 0;
+            for (int sampleCount = 0; sampleCount < sampleBuffer.length; sampleCount++) {
+                returnBuffer[binIndex] += Math.abs(sampleBuffer[sampleCount]);
+                if (framesToRead < BIN_SIZE && !(binIndex == totalBinCount - 1)) {
+                    throw new RuntimeException("Short Read from Wav File");
+                }
+            }
         }
         return returnBuffer;
     }
@@ -82,13 +88,38 @@ public class MorseDecoder {
          * There are four conditions to handle. Symbols should only be output when you see
          * transitions. You will also have to store how much power or silence you have seen.
          */
+        int onCount = 0;
+        int offCount = 0;
+        boolean wasPower = powerMeasurements[0] > POWER_THRESHOLD;
+        String toReturn = "";
+        for (int i = 1; i < powerMeasurements.length; i++) {
+            boolean isPower = powerMeasurements[i] > POWER_THRESHOLD;
+            if (isPower && wasPower) {
+                onCount++;
+            } else if (isPower && !wasPower) {
+                onCount = 1;
+                if (offCount > DASH_BIN_COUNT) {
+                    toReturn = toReturn + " ";
+                }
 
+            } else if (!isPower && !wasPower) {
+                offCount++;
+
+            } else if (!isPower && wasPower){
+                offCount = 1;
+                if (onCount > DASH_BIN_COUNT) {
+                    toReturn = toReturn + "-";
+                } else toReturn = toReturn + ".";
+
+            }
+            wasPower = isPower;
+        }
         // if ispower and waspower
         // else if ispower and not waspower
         // else if issilence and wassilence
         // else if issilence and not wassilence
 
-        return "";
+        return toReturn;
     }
 
     /**
@@ -174,6 +205,10 @@ public class MorseDecoder {
     public static String morseWavToString(final WavFile inputFile)
             throws IOException, WavFileException {
         double[] binnedSamples = binWavFilePower(inputFile);
+        for (double i : binnedSamples) {
+            System.out.println(i);
+        }
+
         String dotDash = powerToDotDash(binnedSamples);
         String outputString = dotDashToAlpha(dotDash);
         return dotDash + "\n" + outputString;
